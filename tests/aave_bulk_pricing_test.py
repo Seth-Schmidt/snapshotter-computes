@@ -11,7 +11,7 @@ from ..utils.pricing import get_all_asset_prices
 
 async def test_aave_oracle_bulk_pricing():
     # Mock your parameters
-    from_block = 18995000
+    from_block = 11571650
     to_block = from_block + 9
     rpc_helper = RpcHelper()
     aioredis_pool = RedisPoolCache()

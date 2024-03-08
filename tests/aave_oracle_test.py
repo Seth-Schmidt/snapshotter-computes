@@ -10,14 +10,14 @@ from ..utils.pricing import get_asset_price_in_block_range
 
 async def test_aave_oracle_pricing():
     # Mock your parameters
-    from_block = 18780760
+    from_block = 11571650
     to_block = from_block + 9
     rpc_helper = RpcHelper()
     aioredis_pool = RedisPoolCache()
     await aioredis_pool.populate()
     redis_conn = aioredis_pool._aioredis_pool
 
-    asset_address = Web3.to_checksum_address('0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2')
+    asset_address = Web3.to_checksum_address('0x833589fcd6edb6e08f4c7c32d4f71b54bda02913')
 
     asset_metadata = await get_asset_metadata(
         asset_address=asset_address, redis_conn=redis_conn, rpc_helper=rpc_helper,

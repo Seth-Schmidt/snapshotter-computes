@@ -11,10 +11,10 @@ from ..utils.models.message_models import AaveSupplyVolumeSnapshot
 
 async def test_total_supply_processor():
     # Mock your parameters
-    from_block = 19287450  # WETH liquidationCall events
+    from_block = 11571650  # WETH liquidationCall events
     to_block = from_block + 9
     snapshot_process_message = PowerloomSnapshotProcessMessage(
-        data_source='0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
+        data_source='0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
         begin=from_block,
         end=to_block,
         epochId=1,

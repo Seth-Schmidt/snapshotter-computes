@@ -12,10 +12,10 @@ from ..utils.models.message_models import AavePoolTotalAssetSnapshot
 
 async def test_total_supply_processor():
     # Mock your parameters
-    from_block = 18780760
+    from_block = 11571650
     to_block = from_block + 9
     snapshot_process_message = PowerloomSnapshotProcessMessage(
-        data_source='0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0',
+        data_source='0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
         begin=from_block,
         end=to_block,
         epochId=1,
@@ -46,6 +46,9 @@ async def test_total_supply_processor():
         redis_conn=redis_conn,
         rpc_helper=rpc_helper,
     )
+
+    from pprint import pprint
+    pprint(asset_total_snapshot.dict())
 
     assert isinstance(asset_total_snapshot, AavePoolTotalAssetSnapshot)
     assert len(asset_total_snapshot.totalAToken) == (to_block - from_block + 1), 'Should return data for all blocks'

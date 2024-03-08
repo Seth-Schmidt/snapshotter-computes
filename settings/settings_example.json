@@ -10,12 +10,12 @@
         "ui_pool_data_provider": "snapshotter/modules/computes/static/abis/UiPoolDataProvider.json"
     },
     "contract_addresses": {
-        "WETH": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
-        "MAKER": "0x9f8F72aA9304c8B593d555F12eF6589cC3A579A2",
-        "aave_v3_pool": "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2",
-        "pool_data_provider": "0x7B4EB56E7CD4b454BA8ff71E4518426369a138a3",
-        "aave_oracle": "0x54586bE62E3c3580375aE3723C145253060Ca0C2",
-        "ui_pool_data_provider": "0x91c0eA31b49B69Ea18607702c5d9aC360bf3dE7d",
-        "pool_address_provider": "0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e"
+        "WETH": "0x4200000000000000000000000000000000000006",
+        "MAKER": "0x0000000000000000000000000000000000000000",
+        "aave_v3_pool": "0xa238dd80c259a72e81d7e4664a9801593f98d1c5",
+        "pool_data_provider": "0x2d8a3c5677189723c4cb8873cfc9c8976fdf38ac",
+        "aave_oracle": "0x2cc0fc26ed4563a5ce5e8bdcfe1a2878676ae156",
+        "ui_pool_data_provider": "0x174446a6741300cd2e7c1b1a636fee99c8f83502",
+        "pool_address_provider": "0xe20fcbdbffc4dd138ce8b2e6fbb6cb49777ad64d"
       }
 }

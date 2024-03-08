@@ -17,10 +17,10 @@ async def test_total_supply_and_debt_calc():
     # 18 Decimal tokens are slightly off due to compound interest precision, working to
     # have them match exact chain results as well.
     asset_address = Web3.to_checksum_address(
-        '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+        '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
     )
 
-    from_block = 19033030
+    from_block = 11571650
 
     to_block = from_block + 9
     rpc_helper = RpcHelper()
