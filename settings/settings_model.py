@@ -1,4 +1,6 @@
 from typing import List
+from typing import Dict
+from typing import Any
 
 from pydantic import BaseModel
 from pydantic import Field
@@ -44,3 +46,5 @@ class ContractAddresses(BaseModel):
 class Settings(BaseModel):
     aave_contract_abis: AaveContractAbis
     contract_addresses: ContractAddresses
+    initial_assets: List[str]
+    metadata_cache: Dict[str, Any]
