@@ -4,21 +4,12 @@ from decimal import Decimal
 from decimal import localcontext
 
 from eth_abi import abi
-from redis import asyncio as aioredis
 from snapshotter.utils.default_logger import logger
-from snapshotter.utils.redis.redis_keys import source_chain_epoch_size_key
 from snapshotter.utils.rpc import get_contract_abi_dict
 from snapshotter.utils.rpc import get_event_sig_and_abi
 from snapshotter.utils.rpc import RpcHelper
 from web3 import Web3
 
-from ..redis_keys import aave_asset_contract_data
-from ..redis_keys import aave_cached_block_height_asset_data
-from ..redis_keys import aave_cached_block_height_asset_details
-from ..redis_keys import aave_cached_block_height_asset_rate_details
-from ..redis_keys import aave_cached_block_height_assets_prices
-from ..redis_keys import aave_cached_block_height_core_event_data
-from ..redis_keys import aave_pool_asset_set_data
 from ..settings.config import settings as worker_settings
 from .constants import AAVE_EVENT_SIGS
 from .constants import AAVE_EVENTS_ABI
@@ -35,27 +26,14 @@ helper_logger = logger.bind(module='PowerLoom|Aave|Helpers')
 
 async def get_asset_metadata(
     asset_address: str,
-    redis_conn: aioredis.Redis,
     rpc_helper: RpcHelper,
 ):
     try:
         asset_address = Web3.to_checksum_address(asset_address)
 
         # check if cache exist
-        asset_data_cache = await redis_conn.hgetall(
-            aave_asset_contract_data.format(asset_address),
-        )
-
-        if asset_data_cache:
-            asset_decimals = asset_data_cache[b'asset_decimals'].decode(
-                'utf-8',
-            )
-            asset_symbol = asset_data_cache[b'asset_symbol'].decode(
-                'utf-8',
-            )
-            asset_name = asset_data_cache[b'asset_name'].decode(
-                'utf-8',
-            )
+        if asset_address in worker_settings.metadata_cache:
+            return worker_settings.metadata_cache[asset_address]
 
         else:
 
@@ -75,7 +53,7 @@ async def get_asset_metadata(
 
                 [
                     asset_decimals,
-                ] = await rpc_helper.web3_call(tasks, redis_conn=redis_conn)
+                ] = await rpc_helper.web3_call(tasks)
 
             else:
                 tasks.append(asset_contract_obj.functions.decimals())
@@ -85,16 +63,7 @@ async def get_asset_metadata(
                     asset_decimals,
                     asset_symbol,
                     asset_name,
-                ] = await rpc_helper.web3_call(tasks, redis_conn=redis_conn)
-
-            await redis_conn.hset(
-                name=aave_asset_contract_data.format(asset_address),
-                mapping={
-                    'asset_decimals': asset_decimals,
-                    'asset_symbol': asset_symbol,
-                    'asset_name': asset_name,
-                },
-            )
+                ] = await rpc_helper.web3_call(tasks)
 
         return {
             'address': asset_address,
