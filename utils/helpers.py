@@ -144,36 +144,15 @@ def get_maker_pair_data(prop):
         return 'Maker'
 
 
-async def get_bulk_asset_data(
-    redis_conn: aioredis.Redis,
+async def get_asset_data(
+    asset_address: str,
     rpc_helper: RpcHelper,
     from_block: int,
     to_block: int,
 ):
     try:
 
-        # check if asset set cache exist
-        asset_list_set_cache = await redis_conn.smembers(
-            aave_pool_asset_set_data,
-        )
-
-        if asset_list_set_cache:
-            asset_set = {Web3.to_checksum_address(asset.decode('utf-8')) for asset in asset_list_set_cache}
-        else:
-            # if asset set does not exist, fetch it from the pool contract
-            # https://github.com/aave/aave-v3-core/blob/master/contracts/protocol/pool/Pool.sol#L516
-            [asset_list] = await rpc_helper.web3_call(
-                tasks=[pool_contract_obj.functions.getReservesList()],
-                redis_conn=redis_conn,
-            )
-
-            # save the asset set in redis for use in future epochs
-            await redis_conn.sadd(
-                aave_pool_asset_set_data, *asset_list,
-            )
-            asset_set = set(asset_list)
-
-        source_chain_epoch_size = int(await redis_conn.get(source_chain_epoch_size_key()))
+        asset_address = Web3.to_checksum_address(asset_address)
 
         # PoolAddressProvider contract serves as a registry for the Aave protocol's core contracts
         # to be consumed by the Aave UI and the protocol's contracts
@@ -206,12 +185,10 @@ async def get_bulk_asset_data(
             from_block=from_block,
             to_block=to_block,
             function_name='getReservesData',
-            params=[param],
-            redis_conn=redis_conn,
+            params=[param]
         )
 
-        all_assets_data_dict = {asset: {} for asset in asset_set}
-        all_assets_price_dict = {block_num: {} for block_num in range(from_block, to_block + 1)}
+        asset_data_dict = {}
 
         # iterate over the bulk asset data response and decode the data
         for i, block_num in enumerate(range(from_block, to_block + 1)):
@@ -219,164 +196,64 @@ async def get_bulk_asset_data(
                 (type_string, output_type[1]), asset_data_bulk[i],
             )
 
-            # each data point in the response array represents a single asset
-            for data in decoded_assets_data[0]:
-
-                asset = Web3.to_checksum_address(data[0])
-
-                # full response interface can be found in the following github repo:
-                # https://github.com/aave/aave-v3-periphery/blob/master/contracts/misc/interfaces/IUiPoolDataProviderV3.sol#L17
-                asset_data = {
-                    'liquidityIndex': data[13],
-                    'variableBorrowIndex': data[14],
-                    'liquidityRate': data[15],
-                    'variableBorrowRate': data[16],
-                    'stableBorrowRate': data[17],
-                    'lastUpdateTimestamp': data[18],
-                    'availableLiquidity': data[23],
-                    'totalPrincipalStableDebt': data[24],
-                    'averageStableRate': data[25],
-                    'stableDebtLastUpdateTimestamp': data[26],
-                    'totalScaledVariableDebt': data[27],
-                    'priceInMarketReferenceCurrency': data[28],
-                    'accruedToTreasury': data[39],
-                    'isolationModeTotalDebt': data[41],
-                }
-
-                asset_details = {
-                    'ltv': data[4],
-                    'liqThreshold': data[5],
-                    'liqBonus': data[6],
-                    'resFactor': data[7],
-                    'borrowCap': data[46],
-                    'supplyCap': data[47],
-                    'eLtv': data[48],
-                    'eliqThreshold': data[49],
-                    'eliqBonus': data[50],
-                }
-
-                rate_details = {
-                    'varRateSlope1': data[30],
-                    'varRateSlope2': data[31],
-                    'stableRateSlope1': data[32],
-                    'stableRateSlope2': data[33],
-                    'baseStableRate': data[34],
-                    'baseVarRate': data[35],
-                    'optimalRate': data[36],
-                }
-
-                data_dict = {
-                    'asset_data': asset_data,
-                    'asset_details': asset_details,
-                    'rate_details': rate_details,
-                }
-
-                # Account for new assets being added after the initial asset list is retrieved
-                if asset in asset_set:
-                    all_assets_data_dict[asset][block_num] = data_dict
-                    all_assets_price_dict[block_num][asset] = asset_data['priceInMarketReferenceCurrency']
-                else:
-                    await redis_conn.sadd(
-                        aave_pool_asset_set_data, asset,
-                    )
-                    asset_set.add(asset)
-                    all_assets_data_dict[asset] = {}
-                    all_assets_data_dict[asset][block_num] = data_dict
-                    all_assets_price_dict[block_num][asset] = asset_data['priceInMarketReferenceCurrency']
-
-        # cache each data dict for later retrieval by snapshotter during compute
-        for address, data_dict in all_assets_data_dict.items():
-            # cache data at height
-            if len(data_dict) > 0:
-                redis_data_cache_mapping = {
-                    json.dumps({'blockHeight': height, 'data': data['asset_data']}): int(
-                        height,
-                    )
-                    for height, data in data_dict.items()
-                }
-
-                redis_details_cache_mapping = {
-                    json.dumps({'blockHeight': height, 'data': data['asset_details']}): int(
-                        height,
-                    )
-                    for height, data in data_dict.items()
-                }
-
-                redis_rate_cache_mapping = {
-                    json.dumps({'blockHeight': height, 'data': data['rate_details']}): int(
-                        height,
-                    )
-                    for height, data in data_dict.items()
-                }
-
-                asset_address = Web3.to_checksum_address(address)
-
-                await asyncio.gather(
-                    redis_conn.zadd(
-                        name=aave_cached_block_height_asset_data.format(
-                            asset_address,
-                        ),
-                        mapping=redis_data_cache_mapping,
-                    ),
-                    redis_conn.zadd(
-                        name=aave_cached_block_height_asset_details.format(
-                            asset_address,
-                        ),
-                        mapping=redis_details_cache_mapping,
-                    ),
-                    redis_conn.zadd(
-                        name=aave_cached_block_height_asset_rate_details.format(
-                            asset_address,
-                        ),
-                        mapping=redis_rate_cache_mapping,
-                    ),
+            data = next(
+                filter(
+                    lambda x: 
+                    Web3.to_checksum_address(x[0]) == asset_address, 
+                    decoded_assets_data[0]
                 )
-
-                await asyncio.gather(
-                    redis_conn.zremrangebyscore(
-                        name=aave_cached_block_height_asset_data.format(
-                            asset_address,
-                        ),
-                        min=0,
-                        max=from_block - source_chain_epoch_size * 3,
-                    ),
-                    redis_conn.zremrangebyscore(
-                        name=aave_cached_block_height_asset_details.format(
-                            asset_address,
-                        ),
-                        min=0,
-                        max=from_block - source_chain_epoch_size * 3,
-                    ),
-                    redis_conn.zremrangebyscore(
-                        name=aave_cached_block_height_asset_rate_details.format(
-                            asset_address,
-                        ),
-                        min=0,
-                        max=from_block - source_chain_epoch_size * 3,
-                    ),
-                )
-
-        # cache asset prices by block number
-        redis_data_cache_mapping = {
-            json.dumps({'blockHeight': height, 'data': asset_prices}): int(
-                height,
             )
-            for height, asset_prices in all_assets_price_dict.items() if len(asset_prices) > 0
-        }
 
-        await asyncio.gather(
-            redis_conn.zadd(
-                name=aave_cached_block_height_assets_prices,
-                mapping=redis_data_cache_mapping,
-            ),
-            redis_conn.zremrangebyscore(
-                name=aave_cached_block_height_assets_prices,
-                min=0,
-                max=from_block - source_chain_epoch_size * 3,
-            ),
-        )
+            # full response interface can be found in the following github repo:
+            # https://github.com/aave/aave-v3-periphery/blob/master/contracts/misc/interfaces/IUiPoolDataProviderV3.sol#L17
+            asset_data = {
+                'liquidityIndex': data[13],
+                'variableBorrowIndex': data[14],
+                'liquidityRate': data[15],
+                'variableBorrowRate': data[16],
+                'stableBorrowRate': data[17],
+                'lastUpdateTimestamp': data[18],
+                'availableLiquidity': data[23],
+                'totalPrincipalStableDebt': data[24],
+                'averageStableRate': data[25],
+                'stableDebtLastUpdateTimestamp': data[26],
+                'totalScaledVariableDebt': data[27],
+                'priceInMarketReferenceCurrency': data[28],
+                'accruedToTreasury': data[39],
+                'isolationModeTotalDebt': data[41],
+            }
 
-        return all_assets_data_dict
+            asset_details = {
+                'ltv': data[4],
+                'liqThreshold': data[5],
+                'liqBonus': data[6],
+                'resFactor': data[7],
+                'borrowCap': data[46],
+                'supplyCap': data[47],
+                'eLtv': data[48],
+                'eliqThreshold': data[49],
+                'eliqBonus': data[50],
+            }
+
+            rate_details = {
+                'varRateSlope1': data[30],
+                'varRateSlope2': data[31],
+                'stableRateSlope1': data[32],
+                'stableRateSlope2': data[33],
+                'baseStableRate': data[34],
+                'baseVarRate': data[35],
+                'optimalRate': data[36],
+            }
+
+            data_dict = {
+                'asset_data': asset_data,
+                'asset_details': asset_details,
+                'rate_details': rate_details,
+            }
+
+            asset_data_dict[block_num] = data_dict
+
+        return asset_data_dict
 
     except Exception as err:
         # this will be retried in next cycle
