@@ -48,7 +48,7 @@
         "0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2",
         "0x6c3ea9036406852006290770bedfcaba0e23a0e8"
     ],
-    "metadata_cahce": {
+    "metadata_cache": {
         "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": {
           "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
           "decimals": 6,
