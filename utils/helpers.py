@@ -83,75 +83,46 @@ async def get_asset_metadata(
         raise err
 
 
-async def get_pool_supply_events(
+async def get_asset_supply_events(
+    asset_address: str,
     rpc_helper: RpcHelper,
     from_block: int,
     to_block: int,
-    redis_conn: aioredis.Redis,
 
 ):
     try:
 
-        cached_event_dict = await redis_conn.zrangebyscore(
-            name=aave_cached_block_height_core_event_data,
-            min=int(from_block),
-            max=int(to_block),
+        event_sig, event_abi = get_event_sig_and_abi(
+            AAVE_EVENT_SIGS,
+            AAVE_EVENTS_ABI,
         )
 
-        if cached_event_dict:
-            event_dict = {
-                json.loads(event.decode('utf-8'))['blockHeight']:
-                [event for event in json.loads(event.decode('utf-8'))['events']]
-                for event in cached_event_dict
-            }
+        # events for all assets are emitted by the single pool contract when an action is taken
+        events = await rpc_helper.get_events_logs(
+            contract_address=worker_settings.contract_addresses.aave_v3_pool,
+            to_block=to_block,
+            from_block=from_block,
+            topics=[event_sig],
+            event_abi=event_abi,
+        )
 
-            return event_dict
-
-        else:
-            event_sig, event_abi = get_event_sig_and_abi(
-                AAVE_EVENT_SIGS,
-                AAVE_EVENTS_ABI,
+        # filter returned events to only include those relevant to the asset
+        asset_supply_events = list(
+            filter(
+                lambda x: 
+                x['args'].get('reserve', '') == asset_address or
+                x['args'].get('collateralAsset', '') == asset_address, 
+                events
             )
+        )
 
-            # events for all assets are emitted by the single pool contract when an action is taken
-            events = await rpc_helper.get_events_logs(
-                contract_address=worker_settings.contract_addresses.aave_v3_pool,
-                to_block=to_block,
-                from_block=from_block,
-                topics=[event_sig],
-                event_abi=event_abi,
-                redis_conn=redis_conn,
-            )
+        asset_event_dict = {}
 
-            event_dict = {}
+        for block_num in range(from_block, to_block + 1):
+            block_events = filter(lambda x: x['blockNumber'] == block_num, asset_supply_events)
+            asset_event_dict[block_num] = [dict(event) for event in block_events]
 
-            for block_num in range(from_block, to_block + 1):
-                block_events = filter(lambda x: x['blockNumber'] == block_num, events)
-                event_dict[block_num] = [dict(event) for event in block_events]
-
-            if len(event_dict) > 0:
-
-                redis_cache_mapping = {
-                    Web3.to_json({'blockHeight': height, 'events': events}): int(height)
-                    for height, events in event_dict.items()
-                }
-
-                source_chain_epoch_size = int(await redis_conn.get(source_chain_epoch_size_key()))
-
-                # save all assets' event data in redis and remove stale events
-                await asyncio.gather(
-                    redis_conn.zadd(
-                        name=aave_cached_block_height_core_event_data,
-                        mapping=redis_cache_mapping,
-                    ),
-                    redis_conn.zremrangebyscore(
-                        name=aave_cached_block_height_core_event_data,
-                        min=0,
-                        max=from_block - source_chain_epoch_size * 3,
-                    ),
-                )
-
-            return event_dict
+        return asset_event_dict
 
     except Exception as err:
         # this will be retried in next cycle
