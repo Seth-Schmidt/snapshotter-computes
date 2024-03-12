@@ -48,7 +48,7 @@ async def get_asset_supply_and_debt_bulk(
     core_logger.debug(
         f'Starting bulk asset total supply query for: {asset_address}',
     )
-    asset_address = Web3.toChecksumAddress(asset_address)
+    asset_address = Web3.to_checksum_address(asset_address)
 
     asset_metadata = await get_asset_metadata(
         asset_address=asset_address,
@@ -279,7 +279,7 @@ async def get_asset_trade_volume(
     rpc_helper: RpcHelper,
     fetch_timestamp=True,
 ):
-    asset_address = Web3.toChecksumAddress(
+    asset_address = Web3.to_checksum_address(
         asset_address,
     )
     block_details_dict = dict()
