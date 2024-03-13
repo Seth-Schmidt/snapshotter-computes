@@ -1,50 +1,32 @@
 import asyncio
 
-from snapshotter.utils.models.message_models import PowerloomSnapshotProcessMessage
-from snapshotter.utils.redis.redis_conn import RedisPoolCache
-from snapshotter.utils.redis.redis_keys import source_chain_epoch_size_key
+from snapshotter.utils.models.message_models import SnapshotProcessMessage
 from snapshotter.utils.rpc import RpcHelper
 
 from ..pool_total_supply import AssetTotalSupplyProcessor
-from ..utils.helpers import get_bulk_asset_data
 from ..utils.models.message_models import AavePoolTotalAssetSnapshot
 
 
 async def test_total_supply_processor():
     # Mock your parameters
-    from_block = 18780760
+    from_block = 19422690
     to_block = from_block + 9
-    snapshot_process_message = PowerloomSnapshotProcessMessage(
-        data_source='0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0',
+    process_unit = SnapshotProcessMessage(
         begin=from_block,
         end=to_block,
-        epochId=1,
+        epochId=0,
+        day=1,
     )
 
     processor = AssetTotalSupplyProcessor()
     rpc_helper = RpcHelper()
-    aioredis_pool = RedisPoolCache()
-    await aioredis_pool.populate()
-    redis_conn = aioredis_pool._aioredis_pool
 
-    # set key for get_block_details_in_block_range
-    await redis_conn.set(
-        source_chain_epoch_size_key(),
-        to_block - from_block,
-    )
-
-    # simulate preloader call
-    await get_bulk_asset_data(
-        redis_conn=redis_conn,
+    [(data_source_contract_address, asset_total_snapshot)] = await processor.compute(
+        msg_obj=process_unit,
         rpc_helper=rpc_helper,
-        from_block=from_block,
-        to_block=to_block,
-    )
-
-    asset_total_snapshot = await processor.compute(
-        epoch=snapshot_process_message,
-        redis_conn=redis_conn,
-        rpc_helper=rpc_helper,
+        anchor_rpc_helper=None,
+        ipfs_reader=None,
+        protocol_state_contract=None,
     )
 
     assert isinstance(asset_total_snapshot, AavePoolTotalAssetSnapshot)

@@ -1,14 +1,11 @@
 import asyncio
 
-from snapshotter.utils.redis.redis_conn import RedisPoolCache
-from snapshotter.utils.redis.redis_keys import source_chain_epoch_size_key
 from snapshotter.utils.rpc import get_contract_abi_dict
 from snapshotter.utils.rpc import RpcHelper
 from web3 import Web3
 
 from ..utils.constants import pool_data_provider_contract_obj
-from ..utils.core import get_asset_supply_and_debt_bulk
-from ..utils.helpers import get_bulk_asset_data
+from ..utils.core import get_asset_supply_and_debt
 from ..utils.models.data_models import DataProviderReserveData
 
 
@@ -18,35 +15,15 @@ async def test_total_supply_and_debt_calc():
         '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
     )
 
-    from_block = 19321750
+    from_block = 19420920
     to_block = from_block + 9
     rpc_helper = RpcHelper()
-    aioredis_pool = RedisPoolCache()
 
-    await aioredis_pool.populate()
-    redis_conn = aioredis_pool._aioredis_pool
-
-    # set key for get_block_details_in_block_range
-    await redis_conn.set(
-        source_chain_epoch_size_key(),
-        to_block - from_block,
-    )
-
-    # simulate preloader call
-    await get_bulk_asset_data(
-        redis_conn=redis_conn,
-        rpc_helper=rpc_helper,
-        from_block=from_block,
-        to_block=to_block,
-    )
-
-    asset_supply_debt_total = await get_asset_supply_and_debt_bulk(
+    asset_supply_debt_total = await get_asset_supply_and_debt(
         asset_address=asset_address,
         from_block=from_block,
         to_block=to_block,
-        redis_conn=redis_conn,
         rpc_helper=rpc_helper,
-        fetch_timestamp=True,  # get timestamps so events are computed
     )
 
     assert isinstance(asset_supply_debt_total, dict), 'Should return a dict'
@@ -61,17 +38,12 @@ async def test_total_supply_and_debt_calc():
         contract_address=pool_data_provider_contract_obj.address,
         from_block=from_block,
         to_block=to_block,
-        redis_conn=redis_conn,
         params=[asset_address],
     )
 
     chain_data = [DataProviderReserveData(*data) for data in chain_data]
 
     for i, block_num in enumerate(range(from_block, to_block + 1)):
-
-        # bulk mode only calcs debt
-        # target_supply = chain_data[i].totalAToken
-        # computed_supply = asset_supply_debt_total[block_num].totalSupply.token_supply
 
         target_variable_debt = chain_data[i].totalVariableDebt
         computed_variable_debt = asset_supply_debt_total[block_num].totalVariableDebt.token_debt
