@@ -2,7 +2,6 @@ from typing import Dict
 from typing import List
 
 from pydantic import BaseModel
-from snapshotter.utils.models.message_models import AggregateBase
 
 from .data_models import AaveDebtData
 from .data_models import AaveSupplyData
@@ -42,52 +41,6 @@ class AavePoolTotalAssetSnapshot(SnapshotBase):
     availableLiquidity: Dict[str, AaveSupplyData]
 
 
-class AaveTopSupplyData(BaseModel):
-    token_supply: float
-    usd_supply: float
-
-
-class AaveTopDebtData(BaseModel):
-    token_debt: float
-    usd_debt: float
-
-
-class AaveTopAssetSnapshot(BaseModel):
-    name: str
-    symbol: str
-    decimals: int
-    address: str
-    totalAToken: AaveTopSupplyData
-    liquidityApy: float
-    totalVariableDebt: AaveTopDebtData
-    variableApy: float
-    isIsolated: bool
-
-
-class AaveTopAssetsSnapshot(AggregateBase):
-    assets: List[AaveTopAssetSnapshot] = []
-    complete: bool = True
-
-
-class AaveMarketStatsSnapshot(AggregateBase):
-    totalMarketSize: float
-    totalAvailable: float
-    totalBorrows: float
-    marketChange24h: float
-    availableChange24h: float
-    borrowChange24h: float
-    complete: bool = True
-
-
-class AaveAprAggregateSnapshot(AggregateBase):
-    avgLiquidityRate: float = 0
-    avgVariableRate: float = 0
-    avgStableRate: float = 0
-    avgUtilizationRate: float = 0
-    timestamp: int = 0
-    complete: bool = True
-
-
 class AaveSupplyVolumeSnapshot(SnapshotBase):
     borrow: volumeData
     repay: volumeData
@@ -96,33 +49,3 @@ class AaveSupplyVolumeSnapshot(SnapshotBase):
     liquidation: volumeData
     events: List[Dict]
     liquidationList: List[liquidationData]
-
-
-class AaveVolumeAggregateSnapshot(AggregateBase):
-    totalBorrow: volumeData = volumeData()
-    totalRepay: volumeData = volumeData()
-    totalSupply: volumeData = volumeData()
-    totalWithdraw: volumeData = volumeData()
-    totalLiquidatedCollateral: volumeData = volumeData()
-    complete: bool = True
-
-
-class AaveTopAssetVolumeSnapshot(BaseModel):
-    name: str
-    symbol: str
-    address: str
-    totalBorrow: volumeData
-    totalRepay: volumeData
-    totalSupply: volumeData
-    totalWithdraw: volumeData
-    totalLiquidatedCollateral: volumeData
-    borrowChange24h: float
-    repayChange24h: float
-    supplyChange24h: float
-    withdrawChange24h: float
-    liquidationChange24h: float
-
-
-class AaveTopAssetsVolumeSnapshot(AggregateBase):
-    assets: List[AaveTopAssetVolumeSnapshot] = []
-    complete: bool = True
