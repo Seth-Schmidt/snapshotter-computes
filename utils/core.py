@@ -1,7 +1,6 @@
 import asyncio
 import json
 
-from redis import asyncio as aioredis
 from snapshotter.utils.default_logger import logger
 from snapshotter.utils.rpc import RpcHelper
 from snapshotter.utils.snapshot_utils import (
@@ -9,9 +8,6 @@ from snapshotter.utils.snapshot_utils import (
 )
 from web3 import Web3
 
-from ..redis_keys import aave_cached_block_height_asset_data
-from ..redis_keys import aave_cached_block_height_asset_details
-from ..redis_keys import aave_cached_block_height_asset_rate_details
 from .constants import AAVE_CORE_EVENTS
 from .constants import DETAILS_BASIS
 from .constants import ORACLE_DECIMALS
@@ -19,7 +15,8 @@ from .helpers import calculate_compound_interest_rate
 from .helpers import calculate_current_from_scaled
 from .helpers import convert_from_ray
 from .helpers import get_asset_metadata
-from .helpers import get_pool_supply_events
+from .helpers import get_asset_data
+from .helpers import get_asset_supply_events
 from .helpers import rayMul
 from .models.data_models import AaveDebtData
 from .models.data_models import AaveSupplyData
@@ -37,11 +34,10 @@ from .pricing import get_all_asset_prices
 core_logger = logger.bind(module='PowerLoom|AaveCore')
 
 
-async def get_asset_supply_and_debt_bulk(
+async def get_asset_supply_and_debt(
     asset_address,
     from_block,
     to_block,
-    redis_conn: aioredis.Redis,
     rpc_helper: RpcHelper,
     fetch_timestamp=True,
 ):
@@ -52,7 +48,6 @@ async def get_asset_supply_and_debt_bulk(
 
     asset_metadata = await get_asset_metadata(
         asset_address=asset_address,
-        redis_conn=redis_conn,
         rpc_helper=rpc_helper,
     )
 
@@ -61,7 +56,6 @@ async def get_asset_supply_and_debt_bulk(
             block_details_dict = await get_block_details_in_block_range(
                 from_block,
                 to_block,
-                redis_conn=redis_conn,
                 rpc_helper=rpc_helper,
             )
         except Exception as err:
@@ -86,74 +80,12 @@ async def get_asset_supply_and_debt_bulk(
         ),
     )
 
-    asset_data_dict = {}
-    asset_details_dict = {}
-    asset_rates_dict = {}
-
-    # get cached asset data from redis
-    # data is retrieved in bulk by the asset_data preloader and is saved to the cache on epoch release
-    [
-        cached_asset_data_dict,
-        cached_asset_details_dict,
-        cached_asset_rates_dict,
-    ] = await asyncio.gather(
-        redis_conn.zrangebyscore(
-            name=aave_cached_block_height_asset_data.format(
-                asset_address,
-            ),
-            min=int(from_block),
-            max=int(to_block),
-        ),
-        redis_conn.zrangebyscore(
-            name=aave_cached_block_height_asset_details.format(
-                asset_address,
-            ),
-            min=int(from_block),
-            max=int(to_block),
-        ),
-        redis_conn.zrangebyscore(
-            name=aave_cached_block_height_asset_rate_details.format(
-                asset_address,
-            ),
-            min=int(from_block),
-            max=int(to_block),
-        ),
-    )
-
-    # decode and parse the cached data if it exists
-    if cached_asset_data_dict and len(cached_asset_data_dict) == to_block - (from_block - 1):
-        asset_data_dict = {
-            json.loads(
-                data.decode(
-                    'utf-8',
-                ),
-            )['blockHeight']: json.loads(
-                data.decode('utf-8'),
-            )['data']
-            for data in cached_asset_data_dict
-        }
-
-        asset_details_dict = {
-            json.loads(
-                data.decode(
-                    'utf-8',
-                ),
-            )['blockHeight']: json.loads(
-                data.decode('utf-8'),
-            )['data']
-            for data in cached_asset_details_dict
-        }
-
-        asset_rates_dict = {
-            json.loads(
-                data.decode(
-                    'utf-8',
-                ),
-            )['blockHeight']: json.loads(
-                data.decode('utf-8'),
-            )['data']
-            for data in cached_asset_rates_dict
-        }
+    asset_data_dict = await get_asset_data(
+        asset_address=asset_address,
+        rpc_helper=rpc_helper,
+        from_block=from_block,
+        to_block=to_block,
+    )    
 
     # TODO: add fallback if cached data does not exist
 
@@ -164,9 +96,10 @@ async def get_asset_supply_and_debt_bulk(
         timestamp = current_block_details.get('timestamp')
 
         # get the asset data, details and rate details for the current block
-        asset_data = asset_data_dict.get(block_num, None)
-        asset_details = asset_details_dict.get(block_num, None)
-        asset_rate_details = asset_rates_dict.get(block_num, None)
+        block_data = asset_data_dict.get(block_num, None)
+        asset_data = block_data.get('asset_data', None)
+        asset_details = block_data.get('asset_details', None)
+        asset_rate_details = block_data.get('rate_details', None)
 
         # initialize the data models using the retrieved data
         asset_data = UiDataProviderReserveData.parse_obj(asset_data)
@@ -275,7 +208,6 @@ async def get_asset_trade_volume(
     asset_address,
     from_block,
     to_block,
-    redis_conn: aioredis.Redis,
     rpc_helper: RpcHelper,
     fetch_timestamp=True,
 ):
@@ -289,7 +221,6 @@ async def get_asset_trade_volume(
             block_details_dict = await get_block_details_in_block_range(
                 from_block=from_block,
                 to_block=to_block,
-                redis_conn=redis_conn,
                 rpc_helper=rpc_helper,
             )
         except Exception as err:
@@ -305,39 +236,23 @@ async def get_asset_trade_volume(
 
     asset_metadata = await get_asset_metadata(
         asset_address=asset_address,
-        redis_conn=redis_conn,
         rpc_helper=rpc_helper,
     )
 
-    # fetch pre-cached prices for all assets in the pool
     # Used to calculate the USD value of any debt that may be repaid during
     # the liquidation of the current asset, along with the USD value of the asset itself
     price_dict = await get_all_asset_prices(
-        from_block,
-        to_block,
-        redis_conn,
-        rpc_helper,
+        from_block=from_block,
+        to_block=to_block,
+        rpc_helper=rpc_helper,
     )
 
-    # fetch events for all assets in the pool from redis if cached
-    # event data is retrieved and cached in the volume_events preloader
-    supply_events = await get_pool_supply_events(
+    asset_supply_events = await get_asset_supply_events(
+        asset_address=asset_address,
         rpc_helper=rpc_helper,
         from_block=from_block,
         to_block=to_block,
-        redis_conn=redis_conn,
     )
-
-    # TODO: Filter events by address in get_pool_data_events?
-    asset_supply_events = {
-        key: filter(
-            lambda x:
-            x['args'].get('reserve', '') == asset_address or
-            x['args'].get('collateralAsset', '') == asset_address,
-            value,
-        )
-        for key, value in supply_events.items()
-    }
 
     # init data models with empty/0 values
     epoch_results = epochEventVolumeData(
@@ -420,7 +335,6 @@ async def get_asset_trade_volume(
                 # fetch decimal data for the debt asset
                 debt_asset_metadata = await get_asset_metadata(
                     asset_address=debt_asset,
-                    redis_conn=redis_conn,
                     rpc_helper=rpc_helper,
                 )
 
